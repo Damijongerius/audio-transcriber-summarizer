@@ -1,18 +1,45 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Mic, Zap, RotateCcw } from "lucide-react";
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
 import { TranscriptionResult } from "@/components/TranscriptionResult";
 import { SummaryCard } from "@/components/SummaryCard";
 import { TodoList } from "@/components/TodoList";
+import { ProcessingHistory, HistoryItem } from "@/components/ProcessingHistory";
 import { Button } from "@/components/ui/button";
 import { transcribeAudio, analyzeTranscription, AnalysisResult } from "@/lib/whisper";
+
+const HISTORY_KEY = "audio-processing-history";
 
 export default function Index() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentStep, setCurrentStep] = useState<Step>("idle");
   const [transcription, setTranscription] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  // Load history from sessionStorage on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem(HISTORY_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setHistory(parsed.map((item: HistoryItem) => ({
+          ...item,
+          processedAt: new Date(item.processedAt)
+        })));
+      } catch (e) {
+        console.error("Failed to parse history:", e);
+      }
+    }
+  }, []);
+
+  // Save history to sessionStorage when it changes
+  useEffect(() => {
+    if (history.length > 0) {
+      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    }
+  }, [history]);
 
   const handleProcess = async () => {
     if (!selectedFile) return;
@@ -30,6 +57,17 @@ export default function Index() {
 
       // Complete
       setCurrentStep("complete");
+
+      // Add to history
+      const historyItem: HistoryItem = {
+        id: crypto.randomUUID(),
+        fileName: selectedFile.name,
+        processedAt: new Date(),
+        transcription: result.text,
+        summary: analysisResult.summary,
+        todos: analysisResult.todos,
+      };
+      setHistory((prev) => [historyItem, ...prev].slice(0, 10)); // Keep last 10
     } catch (error) {
       console.error("Processing error:", error);
       setCurrentStep("idle");
@@ -41,6 +79,12 @@ export default function Index() {
     setCurrentStep("idle");
     setTranscription("");
     setAnalysis(null);
+  };
+
+  const handleHistorySelect = (item: HistoryItem) => {
+    setTranscription(item.transcription);
+    setAnalysis({ summary: item.summary, todos: item.todos });
+    setCurrentStep("complete");
   };
 
   return (
@@ -86,6 +130,9 @@ export default function Index() {
                   </Button>
                 </div>
               )}
+
+              {/* History section */}
+              <ProcessingHistory items={history} onSelect={handleHistorySelect} />
             </>
           )}
 
