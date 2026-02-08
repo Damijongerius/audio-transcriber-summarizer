@@ -36,7 +36,7 @@ export function TranscriptionResult({ text }: TranscriptionResultProps) {
           )}
         </Button>
       </div>
-      <div className="p-6 max-h-64 overflow-y-auto">
+      <div className="p-6">
         <p className="text-foreground/90 leading-relaxed whitespace-pre-wrap">{text}</p>
       </div>
     </div>

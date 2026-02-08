@@ -20,6 +20,8 @@ export function ProcessingSteps({ currentStep }: ProcessingStepsProps) {
     const currentIndex = stepOrder.indexOf(currentStep);
     const stepIndex = stepOrder.indexOf(stepId);
 
+    // When we reach "complete" step, mark it as complete (not active)
+    if (currentStep === "complete" && stepId === "complete") return "complete";
     if (stepIndex < currentIndex) return "complete";
     if (stepIndex === currentIndex) return "active";
     return "pending";
