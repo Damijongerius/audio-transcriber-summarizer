@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { HistoryItem } from "@/components/ProcessingHistory";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio, analyzeTranscription, AnalysisResult } from "@/lib/whisper";
 
 const HISTORY_KEY = "audio-processing-history";
@@ -19,6 +20,7 @@ export default function Index() {
   const [transcription, setTranscription] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const { toast } = useToast();
 
   // Load history from sessionStorage on mount
   useEffect(() => {
@@ -60,6 +62,12 @@ export default function Index() {
       // Complete
       setCurrentStep("complete");
 
+      // Show completion notification
+      toast({
+        title: "✨ Processing Complete",
+        description: `${selectedFile.name} has been transcribed and analyzed.`,
+      });
+
       // Add to history
       const historyItem: HistoryItem = {
         id: crypto.randomUUID(),
@@ -84,6 +92,11 @@ export default function Index() {
       const analysisResult = await analyzeTranscription(transcription);
       setAnalysis(analysisResult);
       setCurrentStep("complete");
+
+      toast({
+        title: "🔄 Regeneration Complete",
+        description: "Summary and action items have been regenerated.",
+      });
     } catch (error) {
       console.error("Regeneration error:", error);
       setCurrentStep("complete");
