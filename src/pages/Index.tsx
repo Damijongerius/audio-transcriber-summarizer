@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { Mic, Zap, RotateCcw } from "lucide-react";
+import { Mic, Zap } from "lucide-react";
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
 import { TranscriptionResult } from "@/components/TranscriptionResult";
 import { SummaryCard } from "@/components/SummaryCard";
 import { TodoList } from "@/components/TodoList";
-import { ProcessingHistory, HistoryItem } from "@/components/ProcessingHistory";
+import { AppSidebar } from "@/components/AppSidebar";
+import { HistoryItem } from "@/components/ProcessingHistory";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { transcribeAudio, analyzeTranscription, AnalysisResult } from "@/lib/whisper";
 
@@ -88,88 +90,93 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen">
-      {/* Background effects */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
-      </div>
+    <SidebarProvider defaultOpen={false}>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar
+          history={history}
+          onSelectHistory={handleHistorySelect}
+          onNewSession={handleReset}
+        />
 
-      <div className="relative max-w-4xl mx-auto px-4 py-12">
-        {/* Header */}
-        <header className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-            <Mic className="w-4 h-4 text-primary" />
-            <span className="text-sm text-primary font-medium">Audio Intelligence</span>
+        <div className="flex-1 relative">
+          {/* Background effects */}
+          <div className="fixed inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
           </div>
-          <h1 className="text-4xl sm:text-5xl font-bold mb-4">
-            <span className="gradient-text">Transcribe</span>
-            <span className="text-foreground"> & Analyze</span>
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-md mx-auto">
-            Upload your audio file and get instant transcription, summaries, and action items.
-          </p>
-        </header>
 
-        {/* Main content */}
-        <div className="space-y-6">
-          {/* Upload section */}
-          {currentStep === "idle" && (
-            <>
-              <AudioUploader
-                onFileSelect={setSelectedFile}
-                selectedFile={selectedFile}
-                onClear={() => setSelectedFile(null)}
-              />
+          {/* Sidebar trigger */}
+          <div className="absolute top-4 left-4 z-10">
+            <SidebarTrigger className="glass-panel p-2 hover:bg-primary/10" />
+          </div>
 
-              {selectedFile && (
-                <div className="flex justify-center">
-                  <Button variant="glow" size="xl" onClick={handleProcess} className="gap-3">
-                    <Zap className="w-5 h-5" />
-                    Start Processing
-                  </Button>
-                </div>
+          <div className="relative max-w-4xl mx-auto px-4 py-12">
+            {/* Header */}
+            <header className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
+                <Mic className="w-4 h-4 text-primary" />
+                <span className="text-sm text-primary font-medium">Audio Intelligence</span>
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-bold mb-4">
+                <span className="gradient-text">Transcribe</span>
+                <span className="text-foreground"> & Analyze</span>
+              </h1>
+              <p className="text-muted-foreground text-lg max-w-md mx-auto">
+                Upload your audio file and get instant transcription, summaries, and action items.
+              </p>
+            </header>
+
+            {/* Main content */}
+            <div className="space-y-6">
+              {/* Upload section */}
+              {currentStep === "idle" && (
+                <>
+                  <AudioUploader
+                    onFileSelect={setSelectedFile}
+                    selectedFile={selectedFile}
+                    onClear={() => setSelectedFile(null)}
+                  />
+
+                  {selectedFile && (
+                    <div className="flex justify-center">
+                      <Button variant="glow" size="xl" onClick={handleProcess} className="gap-3">
+                        <Zap className="w-5 h-5" />
+                        Start Processing
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
 
-              {/* History section */}
-              <ProcessingHistory items={history} onSelect={handleHistorySelect} />
-            </>
-          )}
+              {/* Processing steps */}
+              <ProcessingSteps currentStep={currentStep} />
 
-          {/* Processing steps */}
-          <ProcessingSteps currentStep={currentStep} />
+              {/* Results */}
+              {currentStep === "complete" && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <TranscriptionResult text={transcription} />
 
-          {/* Results */}
-          {currentStep === "complete" && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <TranscriptionResult text={transcription} />
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {analysis && (
-                  <>
-                    <SummaryCard summary={analysis.summary} />
-                    <TodoList items={analysis.todos} />
-                  </>
-                )}
-              </div>
-
-              <div className="flex justify-center pt-4">
-                <Button variant="glass" size="lg" onClick={handleReset} className="gap-2">
-                  <RotateCcw className="w-4 h-4" />
-                  Process Another File
-                </Button>
-              </div>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {analysis && (
+                      <>
+                        <SummaryCard summary={analysis.summary} />
+                        <TodoList items={analysis.todos} />
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        <footer className="mt-20 text-center">
-          <p className="text-xs text-muted-foreground/50 font-mono">
-            Powered by Whisper AI • Built with precision
-          </p>
-        </footer>
+            {/* Footer */}
+            <footer className="mt-20 text-center">
+              <p className="text-xs text-muted-foreground/50 font-mono">
+                Powered by Whisper AI • Built with precision
+              </p>
+            </footer>
+          </div>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
