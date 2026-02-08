@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mic, Zap } from "lucide-react";
+import { Mic, Zap, RefreshCw } from "lucide-react";
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
 import { TranscriptionResult } from "@/components/TranscriptionResult";
@@ -76,6 +76,20 @@ export default function Index() {
     }
   };
 
+  const handleRegenerate = async () => {
+    if (!transcription) return;
+
+    try {
+      setCurrentStep("summarizing");
+      const analysisResult = await analyzeTranscription(transcription);
+      setAnalysis(analysisResult);
+      setCurrentStep("complete");
+    } catch (error) {
+      console.error("Regeneration error:", error);
+      setCurrentStep("complete");
+    }
+  };
+
   const handleReset = () => {
     setSelectedFile(null);
     setCurrentStep("idle");
@@ -89,6 +103,21 @@ export default function Index() {
     setCurrentStep("complete");
   };
 
+  const handleDeleteHistory = (id: string) => {
+    setHistory((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      if (updated.length === 0) {
+        sessionStorage.removeItem(HISTORY_KEY);
+      }
+      return updated;
+    });
+  };
+
+  const handleClearHistory = () => {
+    setHistory([]);
+    sessionStorage.removeItem(HISTORY_KEY);
+  };
+
   return (
     <SidebarProvider defaultOpen={false}>
       <div className="min-h-screen flex w-full">
@@ -96,6 +125,8 @@ export default function Index() {
           history={history}
           onSelectHistory={handleHistorySelect}
           onNewSession={handleReset}
+          onDeleteHistory={handleDeleteHistory}
+          onClearHistory={handleClearHistory}
         />
 
         <div className="flex-1 relative">
@@ -163,6 +194,13 @@ export default function Index() {
                         <TodoList items={analysis.todos} />
                       </>
                     )}
+                  </div>
+
+                  <div className="flex justify-center">
+                    <Button variant="glass" size="lg" onClick={handleRegenerate} className="gap-2">
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate Output
+                    </Button>
                   </div>
                 </div>
               )}
