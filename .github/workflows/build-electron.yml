@@ -34,3 +34,4 @@ jobs:
         with:
           name: electron-build
           path: dist-electron/*.exe
+          retention-days: 1

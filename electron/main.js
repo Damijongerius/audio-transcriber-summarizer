@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
@@ -91,6 +92,24 @@ function loadLocalFile(win) {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Initialize auto-updates
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on('update-available', () => {
+    console.log('[Main] Update available.');
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    console.log('[Main] Update downloaded; will install in 5 seconds');
+    setTimeout(() => {
+      autoUpdater.quitAndInstall();
+    }, 5000);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Main] Error in auto-updater: ', err);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
