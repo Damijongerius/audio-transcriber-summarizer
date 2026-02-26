@@ -15,7 +15,8 @@
     "electron:dev": "wait-on http://127.0.0.1:8080 && electron .",
     "electron:build": "npm run build && electron-builder",
     "dev:all": "concurrently \"npm run dev\" \"npm run electron:dev\"",
-    "dev:build": "npm run build && electron ."
+    "dev:build": "npm run build && electron .",
+    "release": "npm run build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.damijongerius.audio-transcriber-summarizer",
