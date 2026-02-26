@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mic, Zap, RefreshCw } from "lucide-react";
+import { Mic, Zap, RefreshCw, Terminal } from "lucide-react";
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
 import { TranscriptionResult } from "@/components/TranscriptionResult";
@@ -11,16 +11,47 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio, analyzeTranscription, AnalysisResult } from "@/lib/whisper";
+import { Link } from "react-router-dom";
+import { ConsoleLogs } from "@/components/ConsoleLogs";
+import { convertToWav } from "@/lib/audio-utils";
 
 const HISTORY_KEY = "audio-processing-history";
 
 export default function Index() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState<number>(-1);
   const [currentStep, setCurrentStep] = useState<Step>("idle");
   const [transcription, setTranscription] = useState<string>("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [logs, setLogs] = useState<string>("");
+  const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+
+  const isElectron = typeof window !== 'undefined' && !!window.nativeApi;
+
+  // Real-time log subscriptions
+  useEffect(() => {
+    if (!isElectron) return;
+
+    const unsubWhisper = window.nativeApi.onWhisperProgress((data) => {
+      setLogs(prev => prev + data);
+    });
+
+    const unsubLlama = window.nativeApi.onLlamaToken((data) => {
+      setLogs(prev => prev + data);
+    });
+
+    const unsubLlamaStderr = window.nativeApi.onLlamaTokenStderr((data) => {
+      setLogs(prev => prev + data);
+    });
+
+    return () => {
+      unsubWhisper();
+      unsubLlama();
+      unsubLlamaStderr();
+    };
+  }, [isElectron]);
 
   // Load history from sessionStorage on mount
   useEffect(() => {
@@ -46,41 +77,79 @@ export default function Index() {
   }, [history]);
 
   const handleProcess = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
+    setLogs("");
 
-    try {
-      // Step 1: Transcribe
-      setCurrentStep("transcribing");
-      const result = await transcribeAudio(selectedFile);
-      setTranscription(result.text);
+    // Process files one by one
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      if (processedFiles.has(file.name)) continue;
 
-      // Step 2: Analyze
-      setCurrentStep("summarizing");
-      const analysisResult = await analyzeTranscription(result.text);
-      setAnalysis(analysisResult);
+      setCurrentFileIndex(i);
+      setTranscription("");
+      setAnalysis(null);
 
-      // Complete
-      setCurrentStep("complete");
+      try {
+        // Step 0: Convert to WAV if needed
+        console.log(`[Index] Processing file ${i + 1}/${selectedFiles.length}: ${file.name}`);
 
-      // Show completion notification
-      toast({
-        title: "✨ Processing Complete",
-        description: `${selectedFile.name} has been transcribed and analyzed.`,
-      });
+        // Step 1: Transcribe
+        setCurrentStep("transcribing");
 
-      // Add to history
-      const historyItem: HistoryItem = {
-        id: crypto.randomUUID(),
-        fileName: selectedFile.name,
-        processedAt: new Date(),
-        transcription: result.text,
-        summary: analysisResult.summary,
-        todos: analysisResult.todos,
-      };
-      setHistory((prev) => [historyItem, ...prev].slice(0, 10)); // Keep last 10
-    } catch (error) {
-      console.error("Processing error:", error);
+        let fileToProcess: File = file;
+        if (!file.name.endsWith('.wav')) {
+          console.log("[Index] Converting to 16kHz WAV...");
+          const blob = await convertToWav(file);
+          fileToProcess = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".wav", { type: "audio/wav" });
+        }
+
+        const result = await transcribeAudio(fileToProcess as File);
+        console.log(`[Index] Transcription finished for ${file.name}. Result length: ${result.text.length}`);
+        setTranscription(result.text);
+
+        // Step 2: Analyze
+        console.log(`[Index] Moving to analysis step for ${file.name}...`);
+        setCurrentStep("summarizing");
+        const analysisResult = await analyzeTranscription(result.text);
+        setAnalysis(analysisResult);
+
+        // Complete for this file
+        setProcessedFiles(prev => new Set(prev).add(file.name));
+
+        // Add to history
+        const historyItem: HistoryItem = {
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          processedAt: new Date(),
+          transcription: result.text,
+          summary: analysisResult.summary,
+          todos: analysisResult.todos,
+        };
+        setHistory((prev) => [historyItem, ...prev].slice(0, 10));
+
+      } catch (error) {
+        console.error(`Error processing ${file.name}:`, error);
+        toast({
+          title: `❌ Failed: ${file.name}`,
+          description: String(error),
+          variant: "destructive"
+        });
+      }
+    }
+
+    setCurrentStep("complete");
+    setCurrentFileIndex(-1);
+    toast({
+      title: "✨ Batch Processing Complete",
+      description: `All ${selectedFiles.length} files have been processed.`,
+    });
+  };
+
+  const handleStop = async () => {
+    if (isElectron && window.nativeApi?.llamaStop) {
+      await window.nativeApi.llamaStop();
       setCurrentStep("idle");
+      toast({ title: "⏹️ Stopped", description: "Processing was cancelled." });
     }
   };
 
@@ -104,10 +173,13 @@ export default function Index() {
   };
 
   const handleReset = () => {
-    setSelectedFile(null);
+    setSelectedFiles([]);
+    setCurrentFileIndex(-1);
+    setProcessedFiles(new Set());
     setCurrentStep("idle");
     setTranscription("");
     setAnalysis(null);
+    setLogs("");
   };
 
   const handleHistorySelect = (item: HistoryItem) => {
@@ -150,9 +222,16 @@ export default function Index() {
           </div>
 
           {/* Sidebar trigger */}
-          <div className="absolute top-4 left-4 z-10">
+          <div className="absolute top-4 left-4 z-20">
             <SidebarTrigger className="glass-panel p-2 hover:bg-primary/10" />
           </div>
+
+          {/* Console Logs trigger in top right */}
+          {isElectron && (
+            <div className="absolute top-4 right-4 z-20">
+              <ConsoleLogs logs={logs} />
+            </div>
+          )}
 
           <div className="relative max-w-4xl mx-auto px-4 py-12">
             {/* Header */}
@@ -168,6 +247,11 @@ export default function Index() {
               <p className="text-muted-foreground text-lg max-w-md mx-auto">
                 Upload your audio file and get instant transcription, summaries, and action items.
               </p>
+              <div className="mt-4 flex justify-center gap-3">
+                <Link to="/test">
+                  <Button variant="outline" size="sm">Explore Native Features</Button>
+                </Link>
+              </div>
             </header>
 
             {/* Main content */}
@@ -176,45 +260,72 @@ export default function Index() {
               {currentStep === "idle" && (
                 <>
                   <AudioUploader
-                    onFileSelect={setSelectedFile}
-                    selectedFile={selectedFile}
-                    onClear={() => setSelectedFile(null)}
+                    onFileSelect={setSelectedFiles}
+                    selectedFiles={selectedFiles}
+                    onClear={() => setSelectedFiles([])}
                   />
 
-                  {selectedFile && (
+                  {selectedFiles.length > 0 && (
                     <div className="flex justify-center">
                       <Button variant="glow" size="xl" onClick={handleProcess} className="gap-3">
                         <Zap className="w-5 h-5" />
-                        Start Processing
+                        Start Batch Processing
                       </Button>
                     </div>
                   )}
                 </>
               )}
 
-              {/* Processing steps */}
-              <ProcessingSteps currentStep={currentStep} />
-
-              {/* Results */}
-              {currentStep === "complete" && (
+              {/* Merged View (Processing + Results) */}
+              {currentStep !== "idle" && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <TranscriptionResult text={transcription} />
 
+                  {/* Progress Indicator at the top of results */}
+                  {currentStep !== "complete" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between px-2">
+                        <p className="text-sm font-medium text-primary">
+                          Processing: {selectedFiles[currentFileIndex]?.name || 'Initializing...'}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {currentFileIndex + 1} / {selectedFiles.length}
+                        </p>
+                      </div>
+                      <ProcessingSteps currentStep={currentStep} />
+                      <div className="flex justify-center">
+                        <Button variant="outline" size="sm" onClick={handleStop} className="text-destructive border-destructive/20 hover:bg-destructive/10 h-8">
+                          Cancel Batch
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transcription Card - Ready after step 1 */}
+                  <TranscriptionResult
+                    text={transcription}
+                    isLoading={currentStep === "transcribing"}
+                  />
+
+                  {/* Summary & Todos - Show while summarizing or when complete */}
                   <div className="grid md:grid-cols-2 gap-6">
-                    {analysis && (
-                      <>
-                        <SummaryCard summary={analysis.summary} />
-                        <TodoList items={analysis.todos} />
-                      </>
-                    )}
+                    <SummaryCard
+                      summary={analysis?.summary || ""}
+                      isLoading={currentStep === "summarizing" || (currentStep === "transcribing" && !analysis)}
+                    />
+                    <TodoList
+                      items={analysis?.todos || []}
+                      isLoading={currentStep === "summarizing" || (currentStep === "transcribing" && !analysis)}
+                    />
                   </div>
 
-                  <div className="flex justify-center">
-                    <Button variant="glass" size="lg" onClick={handleRegenerate} className="gap-2">
-                      <RefreshCw className="w-4 h-4" />
-                      Regenerate Output
-                    </Button>
-                  </div>
+                  {currentStep === "complete" && (
+                    <div className="flex justify-center">
+                      <Button variant="glass" size="lg" onClick={handleRegenerate} className="gap-2">
+                        <RefreshCw className="w-4 h-4" />
+                        Regenerate Output
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

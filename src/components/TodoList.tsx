@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle2, Circle, ListTodo, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -10,11 +10,17 @@ interface TodoItem {
 
 interface TodoListProps {
   items: TodoItem[];
+  isLoading?: boolean;
 }
 
-export function TodoList({ items: initialItems }: TodoListProps) {
+export function TodoList({ items: initialItems, isLoading }: TodoListProps) {
   const [items, setItems] = useState(initialItems);
   const [copied, setCopied] = useState(false);
+
+  // Sync internal state with props when they change
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
 
   const toggleItem = (id: string) => {
     setItems((prev) =>
@@ -56,30 +62,35 @@ export function TodoList({ items: initialItems }: TodoListProps) {
         </Button>
       </div>
       <div className="p-4 space-y-2">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => toggleItem(item.id)}
-            className={`w-full flex items-start gap-3 p-3 rounded-lg transition-all duration-200 text-left ${
-              item.completed
+        {isLoading && items.length === 0 ? (
+          <div className="space-y-3 animate-pulse">
+            <div className="h-10 bg-primary/5 rounded-lg w-full" />
+            <div className="h-10 bg-primary/5 rounded-lg w-full" />
+          </div>
+        ) : (
+          items.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => toggleItem(item.id)}
+              className={`w-full flex items-start gap-3 p-3 rounded-lg transition-all duration-200 text-left ${item.completed
                 ? "bg-primary/5 text-muted-foreground"
                 : "bg-secondary/50 hover:bg-secondary text-foreground"
-            }`}
-          >
-            {item.completed ? (
-              <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-            ) : (
-              <Circle className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
-            )}
-            <span
-              className={`leading-relaxed ${
-                item.completed ? "line-through" : ""
-              }`}
+                }`}
             >
-              {item.text}
-            </span>
-          </button>
-        ))}
+              {item.completed ? (
+                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              ) : (
+                <Circle className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+              )}
+              <span
+                className={`leading-relaxed ${item.completed ? "line-through" : ""
+                  }`}
+              >
+                {item.text}
+              </span>
+            </button>
+          ))
+        )}
       </div>
     </div>
   );

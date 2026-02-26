@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 
 interface SummaryCardProps {
   summary: string;
+  isLoading?: boolean;
 }
 
-export function SummaryCard({ summary }: SummaryCardProps) {
+export function SummaryCard({ summary, isLoading }: SummaryCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -37,7 +38,14 @@ export function SummaryCard({ summary }: SummaryCardProps) {
         </Button>
       </div>
       <div className="p-6">
-        <p className="text-foreground/90 leading-relaxed">{summary}</p>
+        {isLoading && !summary ? (
+          <div className="space-y-2 animate-pulse">
+            <div className="h-4 bg-primary/10 rounded w-full" />
+            <div className="h-4 bg-primary/10 rounded w-4/6" />
+          </div>
+        ) : (
+          <p className="text-foreground/90 leading-relaxed">{summary || "Waiting for transcript..."}</p>
+        )}
       </div>
     </div>
   );
