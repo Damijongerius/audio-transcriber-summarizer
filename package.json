@@ -3,6 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "author": "Damijongerius",
+  "description": "Local audio transcription and summarization tool using Whisper and Llama.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -16,11 +18,12 @@
     "electron:build": "npm run build && electron-builder",
     "dev:all": "concurrently \"npm run dev\" \"npm run electron:dev\"",
     "dev:build": "npm run build && electron .",
-    "release": "npm run build && electron-builder --publish always"
+    "release": "npm run build && electron-builder --publish always",
+    "release:verbose": "npm run build && set DEBUG=electron-builder && electron-builder --publish always"
   },
   "build": {
     "appId": "com.damijongerius.audio-transcriber-summarizer",
-    "productName": "Audio Transcriber & Summarizer",
+    "productName": "AudioTranscriberSummarizer",
     "directories": {
       "output": "dist-electron"
     },

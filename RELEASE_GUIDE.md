@@ -37,8 +37,20 @@ npm run release
 
 ### What this does:
 1. **Builds the project**: Runs `npm run build` to generate the latest frontend assets.
-2. **Packages the app**: `electron-builder` packages the application for Windows.
+2. **Packages the app**: `electron-builder` packages the application for Windows. 
+   > [!IMPORTANT]
+   > Since the `native` folder is ~3.26 GB, this step can take **5-15 minutes** depending on your computer's speed. It may look like it's doing nothing—this is normal.
 3. **Uploads to GitHub**: It automatically creates a "Draft" release on your GitHub repository and uploads the `.exe` (portable) file.
+
+## Troubleshooting & Verbose Logging
+
+If you want to see exactly what `electron-builder` is doing (especially during the long packaging phase), use the verbose script:
+
+```sh
+npm run release:verbose
+```
+
+This will output detailed debug logs to your terminal, allowing you to track the progress of the file compression and packaging.
 
 ## 4. Finalize on GitHub
 1. Go to the **Releases** section of your GitHub repository.
