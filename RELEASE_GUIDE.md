@@ -52,7 +52,30 @@ npm run release:verbose
 
 This will output detailed debug logs to your terminal, allowing you to track the progress of the file compression and packaging.
 
-## 4. Finalize on GitHub
+## 4. Managing Large Models (Side-loading)
+
+Since the Whisper and Llama model files are too large (~3.26 GB) for a single installer, they are excluded from the packaged `.exe`.
+
+To use the application after building, you must provide the models manually:
+
+1.  **Locate your portable `.exe`**: After building, it will be in the `dist-electron` folder.
+2.  **Create a `native` folder**: Create a folder named `native` in the same directory as your `.exe`.
+3.  **Copy models**: Copy your `whisper` and `llama` folders (containing the `models` subfolders) from your development directory into this new `native` folder.
+    *   Structure should look like:
+        ```
+        YourApp.exe
+        native/
+          whisper/
+            models/
+              ggml-base.en.bin
+          llama/
+            models/
+              your-model.gguf
+        ```
+
+The application will automatically detect the models in this side-loaded folder.
+
+## 5. Finalize on GitHub
 1. Go to the **Releases** section of your GitHub repository.
 2. You should see a new draft release.
 3. Edit the draft, add a version tag (e.g., `v1.0.1`), and click **Publish release**.

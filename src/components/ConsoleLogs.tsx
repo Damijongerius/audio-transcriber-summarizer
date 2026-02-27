@@ -2,7 +2,7 @@ import { Terminal, X, Copy, Check } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "./ui/sheet";
 
 interface ConsoleLogsProps {
     logs: string;
@@ -42,6 +42,9 @@ export function ConsoleLogs({ logs }: ConsoleLogsProps) {
                             <Terminal className="w-5 h-5 text-primary" />
                             Native Console
                         </SheetTitle>
+                        <SheetDescription className="sr-only">
+                            Displays real-time logs from the native Whisper and Llama engines.
+                        </SheetDescription>
                         <Button variant="ghost" size="sm" onClick={handleCopy} className="h-8 gap-2 text-slate-400 hover:text-slate-100 hover:bg-slate-900">
                             {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
                             <span>{copied ? "Copied" : "Copy All"}</span>

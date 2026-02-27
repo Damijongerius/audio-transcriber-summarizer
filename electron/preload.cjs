@@ -41,4 +41,25 @@ contextBridge.exposeInMainWorld('nativeApi', {
   llamaStop: async () => {
     return await ipcRenderer.invoke('llama:stop');
   },
+  downloadModel: async (modelId) => {
+    return await ipcRenderer.invoke('models:download', modelId);
+  },
+  onDownloadProgress: (callback) => {
+    const cb = (event, data) => callback(data);
+    ipcRenderer.on('models:download-progress', cb);
+    return () => ipcRenderer.removeListener('models:download-progress', cb);
+  },
+  onAllModelsReady: (callback) => {
+    const cb = () => callback();
+    ipcRenderer.on('models:all-ready', cb);
+    return () => ipcRenderer.removeListener('models:all-ready', cb);
+  },
+  getAvailableModels: async () => {
+    return await ipcRenderer.invoke('models:getAvailable');
+  },
+  checkModelsPresence: async () => {
+    return await ipcRenderer.invoke('models:checkPresence');
+  },
 });
+
+

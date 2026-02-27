@@ -4,7 +4,14 @@
  */
 
 export async function convertToWav(file: File): Promise<Blob> {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+    const isElectron = typeof window !== 'undefined' && !!window.nativeApi;
+    if (!isElectron) {
+        console.warn("Native API not found, skipping audio conversion.");
+        return new Blob([], { type: 'audio/wav' });
+    }
+
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const audioContext = new AudioContextClass({
         sampleRate: 16000,
     });
 
@@ -37,6 +44,24 @@ export async function convertToWav(file: File): Promise<Blob> {
 
     await audioContext.close();
     return wavBlob;
+}
+
+/**
+ * Gets the duration of an audio file in seconds using AudioContext for better reliability.
+ */
+export async function getAudioDuration(file: File): Promise<number> {
+    try {
+        const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const duration = audioBuffer.duration;
+        await audioContext.close();
+        return duration;
+    } catch (e) {
+        console.error("Error getting audio duration:", e);
+        return 0;
+    }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, Circle, ListTodo, Copy, Check } from "lucide-react";
+import { CheckCircle2, Circle, ListTodo, Copy, Check, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface TodoItem {
@@ -11,9 +11,10 @@ interface TodoItem {
 interface TodoListProps {
   items: TodoItem[];
   isLoading?: boolean;
+  onRegenerate?: () => void;
 }
 
-export function TodoList({ items: initialItems, isLoading }: TodoListProps) {
+export function TodoList({ items: initialItems, isLoading, onRegenerate }: TodoListProps) {
   const [items, setItems] = useState(initialItems);
   const [copied, setCopied] = useState(false);
 
@@ -92,6 +93,19 @@ export function TodoList({ items: initialItems, isLoading }: TodoListProps) {
           ))
         )}
       </div>
+      {(items.length > 0 || initialItems.length > 0) && !isLoading && onRegenerate && (
+        <div className="px-6 py-3 border-t border-border/10 bg-black/10 flex justify-end">
+          <Button 
+            variant="ghost" 
+            size="xs" 
+            onClick={onRegenerate}
+            className="text-[10px] uppercase tracking-tighter text-muted-foreground hover:text-primary gap-1.5 h-6"
+          >
+            <ThumbsDown className="w-3 h-3" />
+            Not accurate? Regenerate
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

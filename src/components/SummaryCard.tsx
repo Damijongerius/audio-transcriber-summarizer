@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { Sparkles, Copy, Check } from "lucide-react";
+import { Sparkles, Copy, Check, ThumbsDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SummaryCardProps {
   summary: string;
   isLoading?: boolean;
+  onRegenerate?: () => void;
 }
 
-export function SummaryCard({ summary, isLoading }: SummaryCardProps) {
+export function SummaryCard({ summary, isLoading, onRegenerate }: SummaryCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -47,6 +48,19 @@ export function SummaryCard({ summary, isLoading }: SummaryCardProps) {
           <p className="text-foreground/90 leading-relaxed">{summary || "Waiting for transcript..."}</p>
         )}
       </div>
+      {summary && !isLoading && onRegenerate && (
+        <div className="px-6 py-3 border-t border-border/10 bg-black/10 flex justify-end">
+          <Button 
+            variant="ghost" 
+            size="xs" 
+            onClick={onRegenerate}
+            className="text-[10px] uppercase tracking-tighter text-muted-foreground hover:text-primary gap-1.5 h-6"
+          >
+            <ThumbsDown className="w-3 h-3" />
+            Not accurate? Regenerate
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

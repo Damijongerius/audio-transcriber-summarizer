@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { Mic, Zap, RefreshCw, Terminal } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Mic, Zap, RefreshCw, Terminal, Settings2 } from "lucide-react";
+
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
 import { TranscriptionResult } from "@/components/TranscriptionResult";
@@ -13,7 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio, analyzeTranscription, AnalysisResult } from "@/lib/whisper";
 import { Link } from "react-router-dom";
 import { ConsoleLogs } from "@/components/ConsoleLogs";
-import { convertToWav } from "@/lib/audio-utils";
+import { convertToWav, getAudioDuration } from "@/lib/audio-utils";
+import { extractAnalysisJson } from "@/lib/jsonUtils";
 
 const HISTORY_KEY = "audio-processing-history";
 
@@ -26,11 +29,54 @@ export default function Index() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [logs, setLogs] = useState<string>("");
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
+  const [detectedModels, setDetectedModels] = useState<{ whisper: string | null; llama: string | null }>({ whisper: null, llama: null });
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [estimatedTime, setEstimatedTime] = useState<number>(0);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<number>(0);
+  const [regenerationCount, setRegenerationCount] = useState<number>(0);
+  const [transcriptionQueue, setTranscriptionQueue] = useState<string[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
 
   const isElectron = typeof window !== 'undefined' && !!window.nativeApi;
 
+  // Check for models presence on mount
+  useEffect(() => {
+    if (!isElectron) return;
+
+    const checkModels = async () => {
+      const presence = await window.nativeApi.checkModelsPresence();
+      if (!presence.hasWhisper || !presence.hasLlama) {
+        navigate("/setup");
+      } else {
+        // Fetch paths and prioritize user selection
+        const models = await window.nativeApi.getDetectedModels();
+        const available = await window.nativeApi.getAvailableModels();
+        
+        const prefWhisper = localStorage.getItem('preferred-whisper-model');
+        const prefLlama = localStorage.getItem('preferred-llama-model');
+        
+        const finalModels = { ...models };
+        
+        if (prefWhisper) {
+          const w = available.whisper.find((m: any) => m.id === prefWhisper);
+          if (w && w.exists) finalModels.whisper = await window.nativeApi.getModelPath(w.relativeDest);
+        }
+        
+        if (prefLlama) {
+          const l = available.llama.find((m: any) => m.id === prefLlama);
+          if (l && l.exists) finalModels.llama = await window.nativeApi.getModelPath(l.relativeDest);
+        }
+
+        setDetectedModels(finalModels);
+      }
+    };
+    checkModels();
+  }, [isElectron, navigate]);
+
   // Real-time log subscriptions
+
   useEffect(() => {
     if (!isElectron) return;
 
@@ -38,24 +84,14 @@ export default function Index() {
       setLogs(prev => prev + data);
     });
 
-    const unsubLlama = window.nativeApi.onLlamaToken((data) => {
-      setLogs(prev => prev + data);
-    });
-
-    const unsubLlamaStderr = window.nativeApi.onLlamaTokenStderr((data) => {
-      setLogs(prev => prev + data);
-    });
-
     return () => {
       unsubWhisper();
-      unsubLlama();
-      unsubLlamaStderr();
     };
   }, [isElectron]);
 
-  // Load history from sessionStorage on mount
+  // Load history from localStorage on mount
   useEffect(() => {
-    const stored = sessionStorage.getItem(HISTORY_KEY);
+    const stored = localStorage.getItem(HISTORY_KEY);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -69,12 +105,26 @@ export default function Index() {
     }
   }, []);
 
-  // Save history to sessionStorage when it changes
+  // Save history to localStorage when it changes
   useEffect(() => {
-    if (history.length > 0) {
-      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   }, [history]);
+
+  // Ticker to slowly reveal transcription segments
+  useEffect(() => {
+    if (transcriptionQueue.length === 0) return;
+
+    const interval = setInterval(() => {
+      setTranscriptionQueue(prev => {
+        if (prev.length === 0) return prev;
+        const [next, ...rest] = prev;
+        setTranscription(t => t + (t ? "" : "") + next);
+        return rest;
+      });
+    }, 150); // Reveal one segment every 150ms
+
+    return () => clearInterval(interval);
+  }, [transcriptionQueue]);
 
   const handleProcess = async () => {
     if (selectedFiles.length === 0) return;
@@ -87,11 +137,23 @@ export default function Index() {
 
       setCurrentFileIndex(i);
       setTranscription("");
+      setTranscriptionQueue([]);
       setAnalysis(null);
+      setRegenerationCount(0);
 
       try {
         // Step 0: Convert to WAV if needed
         console.log(`[Index] Processing file ${i + 1}/${selectedFiles.length}: ${file.name}`);
+        
+        // Calculate estimate
+        const duration = await getAudioDuration(file);
+        let factor = 5; // Base model default
+        if (detectedModels.whisper?.includes('tiny')) factor = 10;
+        else if (detectedModels.whisper?.includes('medium')) factor = 2;
+        else if (detectedModels.whisper?.includes('large')) factor = 1.5;
+        
+        const estimate = Math.ceil(duration / factor);
+        setEstimatedTime(estimate);
 
         // Step 1: Transcribe
         setCurrentStep("transcribing");
@@ -103,14 +165,45 @@ export default function Index() {
           fileToProcess = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".wav", { type: "audio/wav" });
         }
 
-        const result = await transcribeAudio(fileToProcess as File);
+        const startTime = Date.now();
+        const result = await transcribeAudio(
+          fileToProcess as File, 
+          detectedModels.whisper || undefined,
+          (segment) => {
+            setTranscriptionQueue(prev => [...prev, segment]);
+          },
+          (percent) => {
+            setTranscriptionProgress(percent);
+            // Dynamic ETA calculation: (timeElapsed / percent) * (100 - percent) + 60s buffer
+            if (percent > 0) {
+              const elapsed = (Date.now() - startTime) / 1000;
+              const remaining = Math.ceil((elapsed / percent) * (100 - percent)) + 60;
+              setEstimatedTime(remaining);
+            }
+          }
+        );
         console.log(`[Index] Transcription finished for ${file.name}. Result length: ${result.text.length}`);
+        
+        // Final sync: if there are remaining items in queue, clear queue and use the full result
+        setTranscriptionQueue([]);
         setTranscription(result.text);
 
         // Step 2: Analyze
         console.log(`[Index] Moving to analysis step for ${file.name}...`);
         setCurrentStep("summarizing");
-        const analysisResult = await analyzeTranscription(result.text);
+        setEstimatedTime(20); // Llama usually takes 10-30s
+        const analysisResult = await analyzeTranscription(
+          result.text,
+          (msg) => {
+            setLogs(prev => prev + `\n[Analysis] ${msg}\n`);
+          },
+          (fullOutput) => {
+            const partial = extractAnalysisJson(fullOutput);
+            if (partial) setAnalysis(partial);
+          },
+          detectedModels.llama || undefined,
+          0 // Start with default variant
+        );
         setAnalysis(analysisResult);
 
         // Complete for this file
@@ -126,6 +219,7 @@ export default function Index() {
           todos: analysisResult.todos,
         };
         setHistory((prev) => [historyItem, ...prev].slice(0, 10));
+        setActiveHistoryId(historyItem.id);
 
       } catch (error) {
         console.error(`Error processing ${file.name}:`, error);
@@ -153,13 +247,30 @@ export default function Index() {
     }
   };
 
-  const handleRegenerate = async () => {
-    if (!transcription) return;
-
-    try {
-      setCurrentStep("summarizing");
-      const analysisResult = await analyzeTranscription(transcription);
-      setAnalysis(analysisResult);
+        const handleRegenerate = async () => {
+          if (!transcription) return;
+      
+          try {
+            setAnalysis(null); // Clear old results to show loading state
+            setCurrentStep("summarizing");
+            setEstimatedTime(20); // Llama usually takes 10-30s
+                const nextVariant = regenerationCount + 1;
+          setRegenerationCount(nextVariant);
+    
+          const analysisResult = await analyzeTranscription(
+            transcription, 
+            (msg) => {
+              setLogs(prev => prev + `\n[Analysis] ${msg}\n`);
+            },
+            (fullOutput) => {
+              const partial = extractAnalysisJson(fullOutput);
+              if (partial) setAnalysis(partial);
+            },
+            detectedModels.llama || undefined,
+            nextVariant
+          );
+          setAnalysis(analysisResult);
+    
       setCurrentStep("complete");
 
       toast({
@@ -178,13 +289,16 @@ export default function Index() {
     setProcessedFiles(new Set());
     setCurrentStep("idle");
     setTranscription("");
+    setTranscriptionQueue([]);
     setAnalysis(null);
     setLogs("");
+    setActiveHistoryId(null);
   };
 
   const handleHistorySelect = (item: HistoryItem) => {
     setTranscription(item.transcription);
     setAnalysis({ summary: item.summary, todos: item.todos });
+    setActiveHistoryId(item.id);
     setCurrentStep("complete");
   };
 
@@ -192,15 +306,17 @@ export default function Index() {
     setHistory((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       if (updated.length === 0) {
-        sessionStorage.removeItem(HISTORY_KEY);
+        localStorage.removeItem(HISTORY_KEY);
       }
       return updated;
     });
+    if (activeHistoryId === id) setActiveHistoryId(null);
   };
 
   const handleClearHistory = () => {
     setHistory([]);
-    sessionStorage.removeItem(HISTORY_KEY);
+    setActiveHistoryId(null);
+    localStorage.removeItem(HISTORY_KEY);
   };
 
   return (
@@ -208,6 +324,7 @@ export default function Index() {
       <div className="min-h-screen flex w-full">
         <AppSidebar
           history={history}
+          activeHistoryId={activeHistoryId}
           onSelectHistory={handleHistorySelect}
           onNewSession={handleReset}
           onDeleteHistory={handleDeleteHistory}
@@ -248,6 +365,12 @@ export default function Index() {
                 Upload your audio file and get instant transcription, summaries, and action items.
               </p>
               <div className="mt-4 flex justify-center gap-3">
+                <Link to="/setup">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Settings2 className="w-4 h-4" />
+                    Change Models
+                  </Button>
+                </Link>
                 <Link to="/test">
                   <Button variant="outline" size="sm">Explore Native Features</Button>
                 </Link>
@@ -269,7 +392,7 @@ export default function Index() {
                     <div className="flex justify-center">
                       <Button variant="glow" size="xl" onClick={handleProcess} className="gap-3">
                         <Zap className="w-5 h-5" />
-                        Start Batch Processing
+                        Start Processing files
                       </Button>
                     </div>
                   )}
@@ -291,7 +414,7 @@ export default function Index() {
                           {currentFileIndex + 1} / {selectedFiles.length}
                         </p>
                       </div>
-                      <ProcessingSteps currentStep={currentStep} />
+                      <ProcessingSteps currentStep={currentStep} estimatedTime={estimatedTime} />
                       <div className="flex justify-center">
                         <Button variant="outline" size="sm" onClick={handleStop} className="text-destructive border-destructive/20 hover:bg-destructive/10 h-8">
                           Cancel Batch
@@ -304,6 +427,8 @@ export default function Index() {
                   <TranscriptionResult
                     text={transcription}
                     isLoading={currentStep === "transcribing"}
+                    estimatedTime={estimatedTime}
+                    progress={transcriptionProgress}
                   />
 
                   {/* Summary & Todos - Show while summarizing or when complete */}
@@ -311,10 +436,12 @@ export default function Index() {
                     <SummaryCard
                       summary={analysis?.summary || ""}
                       isLoading={currentStep === "summarizing" || (currentStep === "transcribing" && !analysis)}
+                      onRegenerate={handleRegenerate}
                     />
                     <TodoList
                       items={analysis?.todos || []}
                       isLoading={currentStep === "summarizing" || (currentStep === "transcribing" && !analysis)}
+                      onRegenerate={handleRegenerate}
                     />
                   </div>
 

@@ -17,7 +17,15 @@ export interface NativeApi {
     openFile: (opts?: any) => Promise<string | null>;
     getDetectedModels: () => Promise<{ whisper: string | null; llama: string | null }>;
     llamaStop: () => Promise<boolean>;
+
+    // New model management
+    getAvailableModels: () => Promise<{ whisper: any[]; llama: any[] }>;
+    checkModelsPresence: () => Promise<{ hasWhisper: boolean; hasLlama: boolean }>;
+    downloadModel: (modelId: string) => Promise<string>;
+    onDownloadProgress: (callback: (data: { name: string; percent: string; downloadedBytes: number; totalBytes: number }) => void) => () => void;
+    onAllModelsReady: (callback: () => void) => () => void;
 }
+
 
 declare global {
     interface Window {

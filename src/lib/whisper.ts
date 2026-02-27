@@ -1,24 +1,61 @@
-// Native Whisper & Llama integration for the main application
-// Using src/types/electron.d.ts for type safety
+import { extractAnalysisJson, AnalysisResult } from './jsonUtils';
+
+export type { AnalysisResult };
 
 export interface TranscriptionResult {
   text: string;
 }
 
-export async function transcribeAudio(file: File): Promise<TranscriptionResult> {
+export async function transcribeAudio(
+  file: File, 
+  modelPath?: string,
+  onSegment?: (segment: string) => void,
+  onProgress?: (percent: number) => void
+): Promise<TranscriptionResult> {
   const isElectron = typeof window !== 'undefined' && !!window.nativeApi;
 
   if (isElectron) {
     const arrayBuffer = await file.arrayBuffer();
-    // Default to auto-detected model if available in main.js
-    const res = await window.nativeApi.transcribeBuffer(arrayBuffer, file.name);
-    if (res.success && res.stdout) {
-      return { text: res.stdout };
+    
+    const unsub = window.nativeApi.onWhisperProgress((data) => {
+      if (data.trim()) {
+        const lines = data.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Check for progress indicator: "progress = 10%"
+          if (trimmed.includes('progress =')) {
+            const match = trimmed.match(/progress\s*=\s*(\d+)%/);
+            if (match && onProgress) {
+              onProgress(parseInt(match[1], 10));
+            }
+            continue;
+          }
+
+          if (trimmed.startsWith('whisper_')) continue;
+          if (trimmed.startsWith('main:')) continue;
+          if (trimmed.startsWith('system_info:')) continue;
+          if (trimmed.startsWith('audio_')) continue;
+          
+          if (onSegment) onSegment(line + '\n');
+        }
+      }
+    });
+
+    try {
+      const res = await window.nativeApi.transcribeBuffer(arrayBuffer, file.name, {
+        model: modelPath
+      });
+      if (res.success && res.stdout) {
+        return { text: res.stdout };
+      }
+      throw new Error(res.stderr || 'Native transcription failed');
+    } finally {
+      unsub();
     }
-    throw new Error(res.stderr || 'Native transcription failed');
   }
 
-  // Fallback for development/browser testing
   console.warn("Native API not found, using placeholder transcription.");
   await new Promise((resolve) => setTimeout(resolve, 1500));
   return {
@@ -26,88 +63,88 @@ export async function transcribeAudio(file: File): Promise<TranscriptionResult> 
   };
 }
 
-export interface AnalysisResult {
-  summary: string;
-  todos: Array<{ id: string; text: string; completed: boolean }>;
-}
-
-export async function analyzeTranscription(text: string): Promise<AnalysisResult> {
+export async function analyzeTranscription(
+  text: string, 
+  onStatus?: (msg: string) => void,
+  onToken?: (fullOutput: string) => void,
+  modelPath?: string,
+  variantIndex: number = 0
+): Promise<AnalysisResult> {
   const isElectron = typeof window !== 'undefined' && !!window.nativeApi;
 
   if (isElectron && text) {
-    const prompt = `You are a helpful assistant that summarizes recordings and extracts actionable tasks.
-Please analyze the following transcript.
-Respond ONLY with a JSON object in exactly this format:
-Respond ONLY with a JSON object.
+    const variants = [
+      "concise one-sentence summary and a standard list of action items",
+      "detailed professional summary focusing on key decisions and a structured to-do list",
+      "ultra-brief high-level overview and only the most critical 3 tasks",
+      "comprehensive summary of all discussion points and a detailed checklist of next steps",
+      "outcome-oriented summary focusing on goals and a list of specific assigned tasks",
+      "technical summary of specific requirements and an engineering-focused task list",
+      "executive summary for leadership and a list of strategic operational items",
+      "chronological summary of events and a time-sensitive sequence of to-dos",
+      "person-focused summary of who said what and a list of responsibilities by name",
+      "bulleted summary of core themes and a comprehensive list of every mentioned action"
+    ];
 
-Transcript:
+    const variant = variants[variantIndex % variants.length];
+
+    const prompt = `
+Return ONLY a valid JSON object. No other text. No preambles.
+
+{
+  "summary": "",
+  "todos": []
+}
+
+Rules:
+- Output MUST be valid JSON.
+- "summary" must be EXACTLY one sentence long.
+- "todos" must be a list of action items.
+- Respond in the SAME LANGUAGE as the text below.
+- Ignore timestamps during analysis.
+
+Text to analyze:
 ${text}
+`;
 
-### RESPONSE:
-{`;
+    if (onStatus) onStatus("🚀 Starting Llama analysis...");
+    console.log("[Whisper.ts] Starting analysis with Llama (Native Test Mode).");
+    
+    let fullOutput = "";
+    const unsub = window.nativeApi.onLlamaToken((token) => {
+      fullOutput += token;
+      if (onToken) onToken(fullOutput);
+    });
+    const unsubStderr = window.nativeApi.onLlamaTokenStderr((token) => {
+      fullOutput += token;
+      if (onToken) onToken(fullOutput);
+    });
 
-    console.log("[Whisper.ts] Starting analysis with Llama. Prompt length:", prompt.length);
-    const res = await window.nativeApi.llamaGenerate(prompt) as any;
-    console.log("[Whisper.ts] Llama API Call Finished.");
-    const combinedOutput = (res.stdout || "") + (res.stderr || "");
-    console.log("[Whisper.ts] FULL COMBINED OUTPUT (for debugging):", combinedOutput);
-    console.log("[Whisper.ts] RAW LLAMA OUTPUT LENGTH:", combinedOutput.length);
-
-    if (combinedOutput) {
-      const sentinel = "### RESPONSE:";
-      const sentinelIndex = combinedOutput.indexOf(sentinel);
-
-      const candidates = [];
-      if (sentinelIndex !== -1) {
-        const afterSentinel = combinedOutput.substring(sentinelIndex + sentinel.length);
-        // Add version with prepended brace (in case AI didn't echo it)
-        candidates.push("{" + afterSentinel);
-        // Add version without prepended brace (in case AI echoed it)
-        candidates.push(afterSentinel);
-        console.log("[Whisper.ts] sentinel found at index:", sentinelIndex);
-      }
-      candidates.push(combinedOutput); // Always try the full output as backup
-
-      for (const targetContent of candidates) {
-        console.log("[Whisper.ts] Scanning candidate content (length):", targetContent.length);
-        const blocks = targetContent.split(/\{/);
-        for (let i = blocks.length - 1; i >= 1; i--) {
-          // Handle case where AI echoes the brace or starts with a duplicate
-          let potentialJson = blocks[i].trim().startsWith('{') ? blocks[i] : '{' + blocks[i];
-          const lastBrace = potentialJson.lastIndexOf('}');
-          if (lastBrace === -1) continue;
-
-          const jsonStr = potentialJson.substring(0, lastBrace + 1);
-          try {
-            const parsed = JSON.parse(jsonStr);
-            if (parsed && (parsed.summary || parsed.todos)) {
-              console.log("[Whisper.ts] Valid JSON isolated and parsed successfully!");
-              return {
-                summary: parsed.summary || "No summary generated.",
-                todos: (parsed.todos || []).map((t: any, i: number) => ({
-                  id: (t && t.id) || String(i + 1),
-                  text: (t && (t.text || t.task || t.item)) || String(t),
-                  completed: !!(t && (t.completed || t.done || t.status === 'completed'))
-                }))
-              };
-            }
-          } catch (e) {
-            // Ignore and continue scanning
-          }
-        }
+    try {
+      const res = await window.nativeApi.llamaGenerate(prompt, { 
+        usePromptFlag: true,
+        n_predict: 512,
+        modelPath: modelPath
+      });
+      
+      const combinedOutput = (res.stdout || "") + (res.stderr || "");
+      const parsed = extractAnalysisJson(combinedOutput || fullOutput);
+      
+      if (parsed) {
+        if (onStatus) onStatus("✅ Analysis successful. Applying results.");
+        return parsed;
       }
 
-      // If we reach here, we failed to get JSON.
-      // Throw an error so the UI (Index.tsx) can show it in a Toast.
+      if (onStatus) onStatus("❌ Analysis failed to extract valid JSON.");
       console.error("[Whisper.ts] Analysis failed to find JSON result. Combined Output:", combinedOutput);
       throw new Error("AI Analysis failed to generate a valid summary. Check console for raw output.");
-    } else {
-      console.error("[Whisper.ts] Llama returned completely empty output.");
-      throw new Error("AI Analysis failed: Llama returned empty output.");
+    } finally {
+      unsub();
+      unsubStderr();
     }
   }
 
-  // Fallback for development or if Llama fails
+  if (onStatus) onStatus("ℹ️ Native API not found, using placeholder analysis.");
   console.warn("Using placeholder analysis.");
   await new Promise((resolve) => setTimeout(resolve, 500));
   return {

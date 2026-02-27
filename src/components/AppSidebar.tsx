@@ -9,6 +9,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarHeader,
+  SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { HistoryItem } from "@/components/ProcessingHistory";
@@ -16,13 +17,21 @@ import { Button } from "@/components/ui/button";
 
 interface AppSidebarProps {
   history: HistoryItem[];
+  activeHistoryId?: string | null;
   onSelectHistory: (item: HistoryItem) => void;
   onNewSession: () => void;
   onDeleteHistory: (id: string) => void;
   onClearHistory: () => void;
 }
 
-export function AppSidebar({ history, onSelectHistory, onNewSession, onDeleteHistory, onClearHistory }: AppSidebarProps) {
+export function AppSidebar({ 
+  history, 
+  activeHistoryId,
+  onSelectHistory, 
+  onNewSession, 
+  onDeleteHistory, 
+  onClearHistory 
+}: AppSidebarProps) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
@@ -63,7 +72,8 @@ export function AppSidebar({ history, onSelectHistory, onNewSession, onDeleteHis
                       <SidebarMenuButton
                         onClick={() => onSelectHistory(item)}
                         tooltip={item.fileName}
-                        className="h-auto py-2 pr-8"
+                        isActive={activeHistoryId === item.id}
+                        className={`h-auto py-2 pr-8 ${activeHistoryId === item.id ? 'bg-primary/10' : ''}`}
                       >
                         <FileAudio className="w-4 h-4 shrink-0 text-primary" />
                         {!collapsed && (
@@ -105,6 +115,14 @@ export function AppSidebar({ history, onSelectHistory, onNewSession, onDeleteHis
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="p-4 border-t border-border/20">
+        <div className={`flex items-center justify-center transition-all duration-300 ${collapsed ? "opacity-50" : "opacity-100"}`}>
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            {collapsed ? "v1.0" : "Version 1.0.0"}
+          </p>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
