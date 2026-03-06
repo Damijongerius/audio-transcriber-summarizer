@@ -7,12 +7,14 @@ interface Model {
     description: string;
     exists: boolean;
     type: 'whisper' | 'llama';
+    recommended?: boolean;
 }
 
 export function useModelSetup() {
     const [availableModels, setAvailableModels] = useState<{ whisper: Model[], llama: Model[] }>({ whisper: [], llama: [] });
     const [selectedWhisper, setSelectedWhisper] = useState<string>("");
     const [selectedLlama, setSelectedLlama] = useState<string>("");
+    const [performanceProfile, setPerformanceProfile] = useState<'auto' | 'high' | 'balanced' | 'low'>('auto');
     const [downloading, setDownloading] = useState<boolean>(false);
     const [progress, setProgress] = useState<{ name: string, percent: string }>({ name: "", percent: "0" });
     const { toast } = useToast();
@@ -26,6 +28,9 @@ export function useModelSetup() {
                 // Load from localStorage or find first existing
                 const savedWhisper = localStorage.getItem('preferred-whisper-model');
                 const savedLlama = localStorage.getItem('preferred-llama-model');
+                const savedProfile = localStorage.getItem('performance-profile') as any;
+
+                if (savedProfile) setPerformanceProfile(savedProfile);
 
                 if (savedWhisper && models.whisper.some((m: Model) => m.id === savedWhisper)) {
                     setSelectedWhisper(savedWhisper);
@@ -66,6 +71,7 @@ export function useModelSetup() {
         // Save preferences immediately
         localStorage.setItem('preferred-whisper-model', selectedWhisper);
         localStorage.setItem('preferred-llama-model', selectedLlama);
+        localStorage.setItem('performance-profile', performanceProfile);
 
         // If both already exist, just go to success
         if (whisperModel?.exists && llamaModel?.exists) {
@@ -98,6 +104,8 @@ export function useModelSetup() {
         setSelectedWhisper,
         selectedLlama,
         setSelectedLlama,
+        performanceProfile,
+        setPerformanceProfile,
         downloading,
         progress,
         startSetup

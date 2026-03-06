@@ -60,15 +60,22 @@ const LLAMA_MODELS = [
         description: 'Much smarter and more accurate at summarization. Larger download (~2.2GB).',
         url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
         relativeDest: path.join('native', 'llama', 'models', 'Llama-3.2-3B-Instruct-Q4_K_M.gguf'),
-        type: 'llama'
+        type: 'llama',
+        recommended: true
     }
 ];
 
 
 export function getAvailableModels() {
     return {
-        whisper: WHISPER_MODELS.map(m => ({ ...m, exists: !!getModelPath(m.relativeDest) })),
-        llama: LLAMA_MODELS.map(m => ({ ...m, exists: !!getModelPath(m.relativeDest) }))
+        whisper: WHISPER_MODELS.map(m => {
+            const absolutePath = getModelPath(m.relativeDest);
+            return { ...m, exists: !!absolutePath, path: absolutePath };
+        }),
+        llama: LLAMA_MODELS.map(m => {
+            const absolutePath = getModelPath(m.relativeDest);
+            return { ...m, exists: !!absolutePath, path: absolutePath };
+        })
     };
 }
 

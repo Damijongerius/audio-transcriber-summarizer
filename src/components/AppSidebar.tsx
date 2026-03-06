@@ -1,4 +1,4 @@
-import { FileAudio, FolderOpen, Plus, Trash2, X } from "lucide-react";
+import { BrainCircuit, Cpu, FileAudio, FolderOpen, Mic, Plus, Trash2, X } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +22,9 @@ interface AppSidebarProps {
   onNewSession: () => void;
   onDeleteHistory: (id: string) => void;
   onClearHistory: () => void;
+  whisperName?: string | null;
+  llamaName?: string | null;
+  performanceProfile?: string | null;
 }
 
 export function AppSidebar({ 
@@ -30,7 +33,10 @@ export function AppSidebar({
   onSelectHistory, 
   onNewSession, 
   onDeleteHistory, 
-  onClearHistory 
+  onClearHistory,
+  whisperName,
+  llamaName,
+  performanceProfile
 }: AppSidebarProps) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -115,6 +121,42 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      {!collapsed && (whisperName || llamaName) && (
+        <div className="px-4 py-4 border-t border-border/20 bg-primary/5 space-y-3">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/70 mb-2">Active AI Engines</p>
+          
+          {whisperName && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-primary/80">
+                <Mic className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-tighter">Transcription</span>
+              </div>
+              <p className="text-xs font-medium text-foreground/90 truncate pl-5">{whisperName}</p>
+            </div>
+          )}
+          
+          {llamaName && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-accent/80">
+                <BrainCircuit className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-tighter">Intelligence</span>
+              </div>
+              <p className="text-xs font-medium text-foreground/90 truncate pl-5">{llamaName}</p>
+            </div>
+          )}
+
+          {performanceProfile && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-amber-500/80">
+                <Cpu className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-tighter">Performance Profile</span>
+              </div>
+              <p className="text-xs font-medium text-foreground/90 truncate pl-5 capitalize">{performanceProfile}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <SidebarFooter className="p-4 border-t border-border/20">
         <div className={`flex items-center justify-center transition-all duration-300 ${collapsed ? "opacity-50" : "opacity-100"}`}>

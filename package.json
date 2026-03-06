@@ -27,6 +27,7 @@
     "appId": "com.damijongerius.audio-transcriber-summarizer",
     "productName": "AudioTranscriberSummarizer",
     "icon": "public/icon.png",
+    "asar": true,
     "directories": {
       "output": "dist-electron"
     },
@@ -46,6 +47,9 @@
     ],
     "win": {
       "target": "portable"
+    },
+    "portable": {
+      "artifactName": "${productName} ${version}.${ext}"
     },
     "publish": {
       "provider": "generic",

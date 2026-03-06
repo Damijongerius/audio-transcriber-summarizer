@@ -1,10 +1,13 @@
-import { Check, Loader2, Circle, Info } from "lucide-react";
+import { Check, Loader2, Circle, Info, BrainCircuit, Mic } from "lucide-react";
 import React from "react";
+import { formatModelName } from "@/lib/utils";
 
 export type Step = "idle" | "transcribing" | "summarizing" | "complete";
 
 interface ProcessingStepsProps {
   currentStep: Step;
+  whisperModel?: string | null;
+  llamaModel?: string | null;
 }
 
 const steps = [
@@ -13,7 +16,7 @@ const steps = [
   { id: "complete", label: "Complete", description: "Results ready" },
 ];
 
-export function ProcessingSteps({ currentStep }: ProcessingStepsProps) {
+export function ProcessingSteps({ currentStep, whisperModel, llamaModel }: ProcessingStepsProps) {
   if (currentStep === "idle") return null;
 
   const getStepStatus = (stepId: string): "pending" | "active" | "complete" => {
@@ -65,6 +68,18 @@ export function ProcessingSteps({ currentStep }: ProcessingStepsProps) {
                         >
                           {step.label}
                         </p>
+                        {isActive && step.id === "transcribing" && whisperModel && (
+                          <div className="flex items-center gap-1 text-[9px] font-mono text-primary/70 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 shrink-0 uppercase tracking-tighter">
+                            <Mic className="w-2.5 h-2.5" />
+                            <span>{formatModelName(whisperModel)}</span>
+                          </div>
+                        )}
+                        {isActive && step.id === "summarizing" && llamaModel && (
+                          <div className="flex items-center gap-1 text-[9px] font-mono text-accent/70 bg-accent/5 px-1.5 py-0.5 rounded border border-accent/10 shrink-0 uppercase tracking-tighter">
+                            <BrainCircuit className="w-2.5 h-2.5" />
+                            <span>{formatModelName(llamaModel)}</span>
+                          </div>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{step.description}</p>
                     </div>

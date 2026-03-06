@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, Zap, RefreshCw, Terminal, Settings2 } from "lucide-react";
+import { Mic, Zap, RefreshCw, Terminal, Settings2, BrainCircuit, Cpu, Gauge } from "lucide-react";
 
 import { AudioUploader } from "@/components/AudioUploader";
 import { ProcessingSteps, Step } from "@/components/ProcessingSteps";
@@ -17,6 +17,7 @@ import { Link } from "react-router-dom";
 import { ConsoleLogs } from "@/components/ConsoleLogs";
 import { convertToWav, getAudioDuration } from "@/lib/audio-utils";
 import { extractAnalysisJson } from "@/lib/jsonUtils";
+import { formatModelName } from "@/lib/utils";
 
 const HISTORY_KEY = "audio-processing-history";
 
@@ -29,7 +30,19 @@ export default function Index() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [logs, setLogs] = useState<string>("");
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
-  const [detectedModels, setDetectedModels] = useState<{ whisper: string | null; llama: string | null }>({ whisper: null, llama: null });
+  const [detectedModels, setDetectedModels] = useState<{ 
+    whisper: string | null; 
+    whisperName: string | null;
+    llama: string | null;
+    llamaName: string | null;
+    performanceProfile: string;
+  }>({ 
+    whisper: null, 
+    whisperName: null,
+    llama: null, 
+    llamaName: null,
+    performanceProfile: 'auto'
+  });
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [estimatedTime, setEstimatedTime] = useState<number>(0);
   const [transcriptionProgress, setTranscriptionProgress] = useState<number>(0);
@@ -56,17 +69,30 @@ export default function Index() {
         
         const prefWhisper = localStorage.getItem('preferred-whisper-model');
         const prefLlama = localStorage.getItem('preferred-llama-model');
+        const prefProfile = localStorage.getItem('performance-profile') || 'auto';
         
-        const finalModels = { ...models };
+        const finalModels = { 
+          whisper: models.whisper, 
+          whisperName: models.whisper ? formatModelName(models.whisper) : null,
+          llama: models.llama, 
+          llamaName: models.llama ? formatModelName(models.llama) : null,
+          performanceProfile: prefProfile
+        };
         
         if (prefWhisper) {
           const w = available.whisper.find((m: any) => m.id === prefWhisper);
-          if (w && w.exists) finalModels.whisper = await window.nativeApi.getModelPath(w.relativeDest);
+          if (w && w.exists) {
+            finalModels.whisper = w.path;
+            finalModels.whisperName = w.name;
+          }
         }
         
         if (prefLlama) {
           const l = available.llama.find((m: any) => m.id === prefLlama);
-          if (l && l.exists) finalModels.llama = await window.nativeApi.getModelPath(l.relativeDest);
+          if (l && l.exists) {
+            finalModels.llama = l.path;
+            finalModels.llamaName = l.name;
+          }
         }
 
         setDetectedModels(finalModels);
@@ -84,8 +110,23 @@ export default function Index() {
       setLogs(prev => prev + data);
     });
 
+    const unsubWhisperStderr = window.nativeApi.onWhisperProgressStderr((data) => {
+      setLogs(prev => prev + data);
+    });
+
+    const unsubLlama = window.nativeApi.onLlamaToken((data) => {
+      setLogs(prev => prev + data);
+    });
+
+    const unsubLlamaStderr = window.nativeApi.onLlamaTokenStderr((data) => {
+      setLogs(prev => prev + data);
+    });
+
     return () => {
       unsubWhisper();
+      unsubWhisperStderr();
+      unsubLlama();
+      unsubLlamaStderr();
     };
   }, [isElectron]);
 
@@ -329,6 +370,9 @@ export default function Index() {
           onNewSession={handleReset}
           onDeleteHistory={handleDeleteHistory}
           onClearHistory={handleClearHistory}
+          whisperName={detectedModels.whisperName}
+          llamaName={detectedModels.llamaName}
+          performanceProfile={detectedModels.performanceProfile}
         />
 
         <div className="flex-1 relative">
@@ -364,6 +408,31 @@ export default function Index() {
               <p className="text-muted-foreground text-lg max-w-md mx-auto">
                 Upload your audio file and get instant transcription, summaries, and action items.
               </p>
+              
+              <div className="mt-6 flex flex-wrap justify-center gap-4 text-xs animate-in fade-in slide-in-from-top-4 duration-1000">
+                {detectedModels.whisperName && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 border border-border/50 text-muted-foreground backdrop-blur-sm">
+                    <Mic className="w-3 h-3 text-primary/70" />
+                    <span className="font-semibold text-[10px] uppercase text-primary/70 tracking-wider">Whisper:</span>
+                    <span className="font-medium">{detectedModels.whisperName}</span>
+                  </div>
+                )}
+                {detectedModels.llamaName && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 border border-border/50 text-muted-foreground backdrop-blur-sm">
+                    <BrainCircuit className="w-3 h-3 text-accent/70" />
+                    <span className="font-semibold text-[10px] uppercase text-accent/70 tracking-wider">Intelligence:</span>
+                    <span className="font-medium">{detectedModels.llamaName}</span>
+                  </div>
+                )}
+                {detectedModels.performanceProfile && (
+                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 border border-border/50 text-muted-foreground backdrop-blur-sm">
+                    <Cpu className="w-3 h-3 text-amber-500/70" />
+                    <span className="font-semibold text-[10px] uppercase text-amber-500/70 tracking-wider">Profile:</span>
+                    <span className="font-medium capitalize">{detectedModels.performanceProfile}</span>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-4 flex justify-center gap-3">
                 <Link to="/setup">
                   <Button variant="outline" size="sm" className="gap-2">
@@ -414,7 +483,11 @@ export default function Index() {
                           {currentFileIndex + 1} / {selectedFiles.length}
                         </p>
                       </div>
-                      <ProcessingSteps currentStep={currentStep} estimatedTime={estimatedTime} />
+                      <ProcessingSteps 
+                        currentStep={currentStep} 
+                        whisperModel={detectedModels.whisper}
+                        llamaModel={detectedModels.llama}
+                      />
                       <div className="flex justify-center">
                         <Button variant="outline" size="sm" onClick={handleStop} className="text-destructive border-destructive/20 hover:bg-destructive/10 h-8">
                           Cancel Batch

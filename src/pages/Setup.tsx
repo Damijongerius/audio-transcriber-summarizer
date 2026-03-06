@@ -1,15 +1,17 @@
 import { useNavigate } from "react-router-dom";
-import { Download, BrainCircuit, Mic, Info } from "lucide-react";
+import { Download, BrainCircuit, Mic, Info, Cpu, Zap, Gauge, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useModelSetup } from "@/hooks/useModelSetup";
 import { ModelCard } from "@/components/setup/ModelCard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Setup() {
     const navigate = useNavigate();
     const {
         availableModels, selectedWhisper, setSelectedWhisper,
-        selectedLlama, setSelectedLlama, downloading,
+        selectedLlama, setSelectedLlama, performanceProfile, 
+        setPerformanceProfile, downloading,
         progress, startSetup
     } = useModelSetup();
 
@@ -63,6 +65,45 @@ export default function Setup() {
                             />
                         ))}
                     </section>
+                </div>
+
+                <div className="glass-panel p-6 mb-10 space-y-4 border-primary/20">
+                    <div className="flex items-center gap-2 px-1">
+                        <Cpu className="w-5 h-5 text-primary" />
+                        <h2 className="text-xl font-semibold">Resource Allocation Strategy</h2>
+                    </div>
+                    
+                    <Tabs value={performanceProfile} onValueChange={(v: any) => setPerformanceProfile(v)} className="w-full">
+                        <TabsList className="grid grid-cols-4 w-full h-12 bg-background/50 border border-border/50">
+                            <TabsTrigger value="auto" className="gap-2">
+                                <Cpu className="w-3.5 h-3.5" /> Auto
+                            </TabsTrigger>
+                            <TabsTrigger value="high" className="gap-2">
+                                <Zap className="w-3.5 h-3.5 text-amber-500" /> High
+                            </TabsTrigger>
+                            <TabsTrigger value="balanced" className="gap-2">
+                                <Gauge className="w-3.5 h-3.5 text-blue-500" /> Balanced
+                            </TabsTrigger>
+                            <TabsTrigger value="low" className="gap-2">
+                                <Leaf className="w-3.5 h-3.5 text-green-500" /> Power
+                            </TabsTrigger>
+                        </TabsList>
+                        
+                        <div className="mt-4 px-2">
+                            <TabsContent value="auto" className="animate-in fade-in slide-in-from-left-2">
+                                <p className="text-sm text-muted-foreground">Automatically analyzes your CPU cores and GPU to find the optimal balance of speed and stability.</p>
+                            </TabsContent>
+                            <TabsContent value="high" className="animate-in fade-in slide-in-from-left-2">
+                                <p className="text-sm text-muted-foreground"><span className="text-amber-500 font-semibold">Max Performance:</span> Uses up to 90% of your CPU cores. Ideal for fast batch processing on high-end workstations.</p>
+                            </TabsContent>
+                            <TabsContent value="balanced" className="animate-in fade-in slide-in-from-left-2">
+                                <p className="text-sm text-muted-foreground"><span className="text-blue-500 font-semibold">Standard:</span> Uses 50-60% of your CPU. Good for multi-tasking while the app processes in the background.</p>
+                            </TabsContent>
+                            <TabsContent value="low" className="animate-in fade-in slide-in-from-left-2">
+                                <p className="text-sm text-muted-foreground"><span className="text-green-500 font-semibold">Energy Efficient:</span> Uses minimal threads. Best for laptops on battery or when you need your PC for heavy tasks like gaming.</p>
+                            </TabsContent>
+                        </div>
+                    </Tabs>
                 </div>
 
                 <div className="flex flex-col items-center gap-6 glass-panel p-8">

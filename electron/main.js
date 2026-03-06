@@ -52,6 +52,7 @@ async function detectGpu() {
 function findBinary(nativeSubpath) {
   const devRoot = path.join(process.cwd());
   const packagedRoot = process.resourcesPath;
+  const asarRoot = app.getAppPath();
   const portableRoot = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
 
   const whisperNames = ['whisper-cli.exe', 'whisper.exe', 'main.exe', 'whisper-cli', 'whisper'];
@@ -63,10 +64,15 @@ function findBinary(nativeSubpath) {
   candidates.push(path.join(devRoot, 'native', nativeSubpath, 'build', 'bin'));
   candidates.push(path.join(devRoot, 'native', nativeSubpath));
 
+  // ASAR/Internal paths
+  candidates.push(path.join(asarRoot, 'native', nativeSubpath));
+  candidates.push(path.join(asarRoot, 'native', nativeSubpath, 'build', 'bin', 'Release'));
+
   // Packaged paths (inside the internal app structure)
   candidates.push(path.join(packagedRoot, 'native', nativeSubpath, 'build', 'bin', 'Release'));
   candidates.push(path.join(packagedRoot, 'native', nativeSubpath, 'build', 'bin'));
   candidates.push(path.join(packagedRoot, 'native', nativeSubpath));
+  candidates.push(path.join(packagedRoot, 'app.asar.unpacked', 'native', nativeSubpath));
 
   // External paths (next to the .exe for side-loading large models)
   candidates.push(path.join(portableRoot, 'native', nativeSubpath));
@@ -187,9 +193,22 @@ app.on('window-all-closed', () => {
 // Helper to run a native binary and capture output, optionally streaming stdout chunks to the renderer
 function runBinary(binaryPath, args = [], inputBuffer, ev, streamEvent, processId) {
   return new Promise((resolve) => {
+    const binaryDir = path.dirname(binaryPath);
     console.log(`[Main] 🏃 Executing Binary: ${path.basename(binaryPath)}`);
-    console.log(`[Main] 📌 Args: ${args.join(' ')}`);
-    const cp = spawn(binaryPath, args, { windowsHide: true });
+    console.log(`[Main] 📂 Working Dir: ${binaryDir}`);
+    
+    // Create a modified environment that includes the binary's directory in the PATH
+    // This is critical for portable apps to find their DLLs
+    const env = { 
+      ...process.env,
+      PATH: `${binaryDir}${path.delimiter}${process.env.PATH}`
+    };
+
+    const cp = spawn(binaryPath, args, { 
+      windowsHide: true,
+      cwd: binaryDir, // Set working directory to where the DLLs are
+      env: env
+    });
 
     if (processId) {
       runningProcesses.set(processId, cp);
@@ -328,6 +347,14 @@ ipcMain.handle('whisper:transcribe-buffer', async (ev, buffer, filename = 'audio
     const binary = findBinary('whisper');
     const args = [];
 
+    // Log start for UI
+    if (ev && ev.sender) {
+      ev.sender.send('whisper:progress', `[Initialization] 🚀 Starting Whisper transcription (buffer)...\n`);
+      ev.sender.send('whisper:progress', `[Initialization] 📂 File: ${filename}\n`);
+      ev.sender.send('whisper:progress', `[Initialization] 🏃 Binary: ${binary}\n`);
+      ev.sender.send('whisper:progress', `[Initialization] 🖥️ GPU Detected: ${hasGpu ? 'YES' : 'NO'}\n`);
+    }
+
     let modelPath = opts.model;
     if (!modelPath) {
       modelPath = getModelPath(path.join('native', 'whisper', 'models', 'ggml-base.en.bin'));
@@ -335,18 +362,38 @@ ipcMain.handle('whisper:transcribe-buffer', async (ev, buffer, filename = 'audio
       modelPath = getModelPath(modelPath);
     }
 
+    if (ev && ev.sender) {
+      ev.sender.send('whisper:progress', `[Initialization] 🧩 Model: ${modelPath || 'None (Default)'}\n`);
+    }
+
     if (modelPath) args.push('-m', modelPath);
     
-    // Advanced Speed optimizations
+    // Advanced Speed/Resource optimizations
     const totalCores = os.cpus().length;
-    // Use a single processor with max threads to avoid model loading overhead
+    const totalMemGB = os.totalmem() / (1024 ** 3);
+    
+    let threads = totalCores;
+    if (totalCores > 8) {
+      threads = Math.floor(totalCores * 0.75);
+    } else if (totalCores > 4) {
+      threads = totalCores - 1;
+    }
+
+    if (hasGpu) {
+      threads = Math.max(4, Math.min(threads, 8));
+    }
+
     const processors = 1;
-    const threads = totalCores;
+
+    if (ev && ev.sender) {
+      ev.sender.send('whisper:progress', `[Resources] 💻 System: ${totalCores} cores, ${totalMemGB.toFixed(1)}GB RAM\n`);
+      ev.sender.send('whisper:progress', `[Resources] ⚙️  Allocation: ${threads} threads, ${processors} processor(s)\n`);
+    }
 
     args.push('-t', String(threads));
     args.push('-p', String(processors));
-    args.push('-bs', '1');
-    args.push('-bo', '1');
+    args.push('-bs', '5');
+    args.push('-bo', '5');
     args.push('-fa');
     args.push('-pp');
     args.push('-l', 'nl');
@@ -405,7 +452,21 @@ ipcMain.handle('llama:generate', async (ev, prompt, opts = {}) => {
   if (modelPath) args.push('-m', modelPath);
 
   // CPU Optimization
-  const threads = opts.threads || os.cpus().length;
+  const totalCores = os.cpus().length;
+  const profile = opts.performanceProfile || 'auto';
+  let threads = opts.threads || totalCores;
+
+  if (profile === 'high') {
+    threads = Math.max(1, Math.floor(totalCores * 0.9));
+  } else if (profile === 'balanced') {
+    threads = Math.max(1, Math.floor(totalCores * 0.6));
+  } else if (profile === 'low') {
+    threads = Math.max(1, Math.floor(totalCores * 0.3));
+  } else {
+    // Auto: use 75% for Llama to keep system usable as it can be heavy
+    threads = Math.max(1, Math.floor(totalCores * 0.75));
+  }
+
   args.push('-t', String(threads));
   args.push('-tb', String(threads)); // threads for batch processing
 
@@ -414,14 +475,14 @@ ipcMain.handle('llama:generate', async (ev, prompt, opts = {}) => {
   args.push('-fa', 'auto');  // Enable Flash Attention if supported
   
   // Stable flags
-  args.push('--temp', '0.2');
+  args.push('--temp', '0.0');
   args.push('--repeat-penalty', '1.1');
   args.push('--color', 'off');
   args.push('--no-display-prompt');
-  args.push('-c', '4096');
+  args.push('-c', '8192');
 
   if (opts.hfRepo && !modelPath) args.push('-hf', opts.hfRepo);
-  const nPredict = opts.n_predict || 1024;
+  const nPredict = opts.n_predict || 2048;
   args.push('-n', String(nPredict));
 
   const finalPrompt = prompt;
@@ -493,6 +554,39 @@ ipcMain.handle('models:download', async (ev, modelId) => {
 
 ipcMain.handle('models:checkPresence', async () => {
   return await checkModelsPresence();
+});
+
+ipcMain.handle('native:checkInternalStructure', async () => {
+  const report = [];
+  const pathsToCheck = {
+    'App Path': app.getAppPath(),
+    'Resources Path': process.resourcesPath,
+    'Executable Dir': path.dirname(process.execPath),
+    'Portable Dir': process.env.PORTABLE_EXECUTABLE_DIR || 'N/A'
+  };
+
+  for (const [name, p] of Object.entries(pathsToCheck)) {
+    try {
+      const exists = fs.existsSync(p);
+      report.push(`[${name}]: ${p} (${exists ? 'EXISTS' : 'NOT FOUND'})`);
+      
+      if (exists) {
+        // Look for native folder inside
+        const nativePath = path.join(p, 'native');
+        const nativeExists = fs.existsSync(nativePath);
+        report.push(`  └─ native folder: ${nativeExists ? 'FOUND' : 'MISSING'}`);
+        
+        if (nativeExists) {
+          const subdirs = fs.readdirSync(nativePath);
+          report.push(`     └─ subdirectories: ${subdirs.join(', ')}`);
+        }
+      }
+    } catch (e) {
+      report.push(`[${name}]: Error scanning: ${e.message}`);
+    }
+  }
+  
+  return report.join('\n');
 });
 
 ipcMain.handle('dialog:openFile', async (ev, opts = {}) => {

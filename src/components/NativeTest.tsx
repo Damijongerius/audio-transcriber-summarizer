@@ -23,6 +23,14 @@ export function NativeTest() {
     const [isElectron, setIsElectron] = useState(false);
     const [detectedModels, setDetectedModels] = useState<{ whisper: string | null; llama: string | null }>({ whisper: null, llama: null });
     const [logs, setLogs] = useState<string>("");
+    const [diagnosticReport, setDiagnosticReport] = useState<string | null>(null);
+
+    const handleRunDiagnostics = async () => {
+        if (window.nativeApi?.checkInternalStructure) {
+            const report = await window.nativeApi.checkInternalStructure();
+            setDiagnosticReport(report);
+        }
+    };
 
     useEffect(() => {
         const checkElectron = typeof window !== 'undefined' && !!window.nativeApi;
@@ -128,6 +136,22 @@ ${text}
                 onAnalyze={handleAnalyzeTranscription}
                 isElectron={isElectron}
             />
+
+            {isElectron && (
+                <div className="pt-10 border-t border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-muted-foreground">Build Diagnostic</h2>
+                        <Button variant="outline" size="sm" onClick={handleRunDiagnostics}>
+                            Run Diagnostic Report
+                        </Button>
+                    </div>
+                    {diagnosticReport && (
+                        <div className="glass-panel p-4 bg-slate-950 font-mono text-[10px] text-slate-300 overflow-x-auto whitespace-pre">
+                            {diagnosticReport}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

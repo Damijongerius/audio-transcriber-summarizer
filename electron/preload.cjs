@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld('nativeApi', {
   checkModelsPresence: async () => {
     return await ipcRenderer.invoke('models:checkPresence');
   },
+  checkInternalStructure: async () => {
+    return await ipcRenderer.invoke('native:checkInternalStructure');
+  },
 });
 
 

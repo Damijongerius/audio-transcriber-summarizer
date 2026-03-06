@@ -16,6 +16,7 @@ export async function transcribeAudio(
 
   if (isElectron) {
     const arrayBuffer = await file.arrayBuffer();
+    const performanceProfile = localStorage.getItem('performance-profile') || 'auto';
     
     const unsub = window.nativeApi.onWhisperProgress((data) => {
       if (data.trim()) {
@@ -45,7 +46,8 @@ export async function transcribeAudio(
 
     try {
       const res = await window.nativeApi.transcribeBuffer(arrayBuffer, file.name, {
-        model: modelPath
+        model: modelPath,
+        performanceProfile: performanceProfile
       });
       if (res.success && res.stdout) {
         return { text: res.stdout };
@@ -123,7 +125,7 @@ ${text}
     try {
       const res = await window.nativeApi.llamaGenerate(prompt, { 
         usePromptFlag: true,
-        n_predict: 512,
+        n_predict: 2048,
         modelPath: modelPath
       });
       

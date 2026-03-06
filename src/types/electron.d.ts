@@ -21,6 +21,7 @@ export interface NativeApi {
     // New model management
     getAvailableModels: () => Promise<{ whisper: any[]; llama: any[] }>;
     checkModelsPresence: () => Promise<{ hasWhisper: boolean; hasLlama: boolean }>;
+    checkInternalStructure: () => Promise<string>;
     downloadModel: (modelId: string) => Promise<string>;
     onDownloadProgress: (callback: (data: { name: string; percent: string; downloadedBytes: number; totalBytes: number }) => void) => () => void;
     onAllModelsReady: (callback: () => void) => () => void;
